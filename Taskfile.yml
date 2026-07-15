@@ -1,0 +1,25 @@
+version: 3
+
+tasks:
+  default:
+    cmds:
+      - task -a
+
+  # API
+  api:up:
+    desc: Start the API dev server
+    dir: .
+    cmds:
+      - npm run dev
+
+  api:build:
+    desc: Build the API
+    cmds:
+      - npm run build
+
+  api:typecheck:
+    desc: Type-check the API
+    cmds:
+      - npx tsc --noEmit
+
+  
