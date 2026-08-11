@@ -12,8 +12,8 @@ import barqStatusModule from "./modules/barq-status";
 import barqUserCountModule from "./modules/barq-user-count";
 import spotifyAuthModule from "./internal/spotify-auth";
 
-const app = Fastify({ logger: true });
-const privateApp = Fastify({ logger: true, ignoreTrailingSlash: true });
+const app = Fastify({ logger: true, trustProxy: true });
+const privateApp = Fastify({ logger: true, trustProxy: true, ignoreTrailingSlash: true });
 
 const corsOrigins = env.CORS_ORIGINS
   ? env.CORS_ORIGINS.split(",").map((s) => s.trim())
@@ -49,7 +49,8 @@ const startPrivateApp = async () => {
   try {
     await privateApp.listen({ port: env.PRIVATE_APP_PORT, host: env.PRIVATE_APP_HOST });
     Logger.info(`Private server listening on port http://${env.PRIVATE_APP_HOST}:${env.PRIVATE_APP_PORT}`);
-    Logger.info('Please visit http://127.0.0.1:3003/login to authorize the Spotify integration.');
+    Logger.info(`Spotify redirect URI: ${env.SPOTIFY_REDIRECT_URI}`);
+    Logger.info(`Please visit http://${env.PRIVATE_APP_HOST}:${env.PRIVATE_APP_PORT}/login to authorize the Spotify integration.`);
   } catch (err) {
     Logger.error(err);
     process.exit(1);
