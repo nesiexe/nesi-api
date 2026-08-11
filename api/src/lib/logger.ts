@@ -1,14 +1,15 @@
 import { pino } from 'pino'
+import { env } from './env'
+
+const isDev = env.NODE_ENV !== 'production'
 
 export const createLogger = (prefix?: string) => {
   const logger = pino({
-    transport: true
-      ? {
-          target: 'pino-pretty',
-        }
+    transport: isDev
+      ? { target: 'pino-pretty' }
       : undefined,
     msgPrefix: prefix ? `[${prefix}] ` : undefined,
-    level: true ? 'debug' : 'info',
+    level: env.LOG_LEVEL ?? (isDev ? 'debug' : 'info'),
   })
 
   return {

@@ -1,14 +1,15 @@
 import { FastifyInstance } from "fastify";
-import { getCurrentlyPlaying } from "./use-cases/get-currently-playing";
+import { fetchCurrentlyPlaying } from "./repositories/spotify-repo";
 
 export default async function nowPlayingModule(fastify: FastifyInstance) {
-  fastify.get("/api/now-playing", async (_req, reply) => {
-    try {
-      const data = await getCurrentlyPlaying();
-      return data ?? { isPlaying: false };
-    } catch (err) {
-      fastify.log.error(err);
-      return reply.status(500).send({ error: "Failed to fetch currently playing" });
-    }
+  await fastify.register(import('@fastify/rate-limit'), {
+    max: 30,
+    timeWindow: '1 minute'
+  });
+
+  fastify.get("/api/now-playing",
+  async (_req, reply) => {
+    const data = await fetchCurrentlyPlaying();
+    return data ?? { isPlaying: false };
   });
 }

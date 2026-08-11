@@ -12,7 +12,8 @@ const nowPlayingCache = createCache<NowPlayingResult | null>(10_000);
 
 async function refreshAccessToken() {
   if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_CLIENT_SECRET || !env.SPOTIFY_REFRESH_TOKEN) {
-    throw new Error("Missing Spotify credentials in environment");
+    throw new Error("Server Error");
+    Logger.warn("Spotify credentials are not set. Please set SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, and SPOTIFY_REFRESH_TOKEN in your environment variables.");
   }
 
   const creds = Buffer.from(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`).toString("base64");
@@ -40,44 +41,38 @@ async function refreshAccessToken() {
 }
 
 export async function fetchCurrentlyPlaying(): Promise<NowPlayingResult | null> {
-  const cached = nowPlayingCache.get("current");
-  if (cached !== undefined) return cached;
-
-  if (!accessToken || Date.now() >= tokenExpiresAt) {
-    if (!refreshPromise) {
-      refreshPromise = refreshAccessToken().finally(() => {
-        refreshPromise = null;
-      });
+  return nowPlayingCache.fetch("current", async () => {
+    if (!accessToken || Date.now() >= tokenExpiresAt) {
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => {
+          refreshPromise = null;
+        });
+      }
+      await refreshPromise;
     }
-    await refreshPromise;
-  }
-  
-  Logger.warn(`fetching spotify api!`)
-  const res = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
-    headers: { Authorization: `Bearer ${accessToken}` },
+
+    Logger.debug(`fetching spotify api!`)
+    const res = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (res.status === 204 || res.status >= 400) {
+      return null;
+    }
+
+    const rawPlayer = (await res.json()) as unknown;
+    const parsed = SpotifyPlayerResponse.safeParse(rawPlayer);
+    if (!parsed.success) {
+      return null;
+    }
+
+    const item = parsed.data.item;
+    return NowPlayingResult.parse({
+      track: item?.name ?? null,
+      artist: item?.artists?.map((a) => a.name).join(", ") ?? null,
+      albumArt: item?.album?.images?.[0]?.url ?? null,
+      url: item?.external_urls?.spotify ?? null,
+      isPlaying: !!parsed.data.is_playing,
+    });
   });
-
-  if (res.status === 204 || res.status >= 400) {
-    nowPlayingCache.set("current", null);
-    return null;
-  }
-
-  const rawPlayer = (await res.json()) as unknown;
-  const parsed = SpotifyPlayerResponse.safeParse(rawPlayer);
-  if (!parsed.success) {
-    nowPlayingCache.set("current", null);
-    return null;
-  }
-
-  const item = parsed.data.item;
-  const result = NowPlayingResult.parse({
-    track: item?.name ?? null,
-    artist: item?.artists?.map((a) => a.name).join(", ") ?? null,
-    albumArt: item?.album?.images?.[0]?.url ?? null,
-    url: item?.external_urls?.spotify ?? null,
-    isPlaying: !!parsed.data.is_playing,
-  });
-
-  nowPlayingCache.set("current", result);
-  return result;
 }

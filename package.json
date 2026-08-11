@@ -3,13 +3,14 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "start": "node dist/api/src/index.js",
+    "start": "node dist/index.js",
     "dev": "tsx watch api/src/index.ts",
     "knex": "tsx ./node_modules/knex/bin/cli.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^11.1.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.2.1",
     "fastify-type-provider-zod": "^7.0.0",

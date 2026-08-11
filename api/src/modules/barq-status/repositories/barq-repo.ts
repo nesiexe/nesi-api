@@ -27,9 +27,12 @@ interface FetchError {
 }
 
 async function fetchBarqTempStatusAPI(uuid: string): Promise<FetchResult | FetchError> {
-  if (!env.BARQ_API_KEY) return { ok: false, error: "missing api key" };
+  if (!env.BARQ_API_KEY) {
+    Logger.warn("Barq API key is not set. Please set BARQ_API_KEY in your environment variables.");
+    return { ok: false, error: "server_error" };
+  }
 
-  Logger.warn(`fetching barq status for ${uuid}`)
+  Logger.debug(`fetching barq status for ${uuid}`)
   const res = await fetch(`https://api.barq.app/api/profiles/${uuid}`, {
     method: "GET",
     headers: {
@@ -38,7 +41,7 @@ async function fetchBarqTempStatusAPI(uuid: string): Promise<FetchResult | Fetch
     },
   });
 
-  if (res.status === 422) {
+  if (res.status === 429) {
     return { ok: false, error: "rate_limited" };
   }
   if (res.status !== 200) {
@@ -88,15 +91,13 @@ export async function getBarqStatusForUuid(uuid?: string): Promise<BarqStatusDat
     throw new NotFoundError("UUID not allowed");
   }
 
-  const cached = statusCache.get(id);
-  if (cached !== undefined) return cached;
+  return statusCache.fetch(id, async () => {
+    const fetched = await fetchBarqTempStatusAPI(id);
+    if (!fetched.ok) {
+      throw new BadRequestError(`Barq API error: ${fetched.error}${fetched.detail ? ` - ${fetched.detail}` : ""}`);
+    }
 
-  const fetched = await fetchBarqTempStatusAPI(id);
-  if (!fetched.ok) {
-    throw new BadRequestError(`Barq API error: ${fetched.error}${fetched.detail ? ` - ${fetched.detail}` : ""}`);
-  }
-
-  statusCache.set(id, fetched.data);
-  Logger.debug("cache expires at" + new Date(Date.now() + hour(1)))
-  return fetched.data;
+    Logger.debug("cache expires at " + new Date(Date.now() + hour(1)))
+    return fetched.data;
+  });
 }

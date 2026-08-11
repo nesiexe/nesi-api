@@ -19,12 +19,12 @@ interface FetchError {
 }
 
 async function fetchBarqUserCount(): Promise<FetchResult | FetchError> {
-    Logger.warn(`fetching usercount`)
+    Logger.debug(`fetching usercount`)
     const res = await fetch("https://api.barq.app/api/public/user-count", {
         method: "GET"
     })
 
-    if (res.status === 422) {
+    if (res.status === 429) {
        return { ok: false, error: "rate_limited" };
     }
     if (res.status !== 200) {
@@ -32,7 +32,7 @@ async function fetchBarqUserCount(): Promise<FetchResult | FetchError> {
        return { ok: false, error: "server_error", detail: text };
     }
 
-    const raw = (await res.json() as unknown)
+    const raw = await res.json() as unknown;
     const parsed = BarqUserCountDto.safeParse(raw)
     if (!parsed.success){
         return { ok: false, error: "invalid_response", detail: parsed.error.message };
@@ -48,15 +48,13 @@ async function fetchBarqUserCount(): Promise<FetchResult | FetchError> {
 }
 
 export async function getBarqUserCount(): Promise<BarqUserCountDto> {
-    const cacheKey = "meow"
-    const cached = countCache.get(cacheKey)
-    if (cached !== undefined) return cached;
+    const cacheKey = "user-count"
+    return countCache.fetch(cacheKey, async () => {
+        const fetched = await fetchBarqUserCount();
+        if (!fetched.ok) {
+            throw new BadRequestError(`Barq API error: ${fetched.error}${fetched.detail ? ` - ${fetched.detail}` : ""}`)
+        }
 
-    const fetched = await fetchBarqUserCount();
-    if (!fetched.ok) {
-        throw new BadRequestError(`Barq API error: ${fetched.error}${fetched.detail ? ` - ${fetched.detail}` : ""}`)
-    }
-
-    countCache.set(cacheKey, fetched.data)
-    return fetched.data;
+        return fetched.data;
+    })
 }

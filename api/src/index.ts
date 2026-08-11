@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { Logger } from "./lib/logger";
 import {
   serializerCompiler,
   validatorCompiler,
@@ -9,10 +10,16 @@ import { errorsPlugin } from "./lib/errors";
 import nowPlayingModule from "./modules/now-playing";
 import barqStatusModule from "./modules/barq-status";
 import barqUserCountModule from "./modules/barq-user-count";
+import spotifyAuthModule from "./internal/spotify-auth";
 
 const app = Fastify({ logger: true });
+const privateApp = Fastify({ logger: true, ignoreTrailingSlash: true });
 
-app.register(cors, { origin: env.CORS_ORIGIN ? [env.CORS_ORIGIN] : false });
+const corsOrigins = env.CORS_ORIGINS
+  ? env.CORS_ORIGINS.split(",").map((s) => s.trim())
+  : [];
+
+app.register(cors, { origin: corsOrigins.length > 0 ? corsOrigins : false });
 
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
@@ -20,16 +27,44 @@ app.setSerializerCompiler(serializerCompiler);
 app.register(errorsPlugin);
 app.register(nowPlayingModule);
 app.register(barqStatusModule);
-app.register(barqUserCountModule)
+app.register(barqUserCountModule);
+
+privateApp.setValidatorCompiler(validatorCompiler);
+privateApp.setSerializerCompiler(serializerCompiler);
+
+privateApp.register(errorsPlugin);
+privateApp.register(spotifyAuthModule);
 
 const start = async () => {
   try {
     await app.listen({ port: env.SERVER_PORT, host: "127.0.0.1" });
-    app.log.info(`Server listening on port http://localhost:${env.SERVER_PORT}`);
+    Logger.info(`Server listening on port http://localhost:${env.SERVER_PORT}`);
   } catch (err) {
-    app.log.error(err);
+    Logger.error(err);
     process.exit(1);
   }
 };
 
+const startPrivateApp = async () => {
+  try {
+    await privateApp.listen({ port: env.PRIVATE_APP_PORT, host: env.PRIVATE_APP_HOST });
+    Logger.info(`Private server listening on port http://${env.PRIVATE_APP_HOST}:${env.PRIVATE_APP_PORT}`);
+    Logger.info('Please visit http://127.0.0.1:3003/login to authorize the Spotify integration.');
+  } catch (err) {
+    Logger.error(err);
+    process.exit(1);
+  }
+};
+
+const shutdown = async () => {
+  Logger.info("Shutting down...");
+  await app.close();
+  await privateApp.close();
+  process.exit(0);
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
 start();
+startPrivateApp();
