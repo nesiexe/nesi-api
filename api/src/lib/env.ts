@@ -7,6 +7,7 @@ config();
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   SERVER_PORT: z.coerce.number().default(3002),
+  SERVER_HOST: z.string().default("0.0.0.0"),
   PRIVATE_APP_PORT: z.coerce.number().default(3003),
   PRIVATE_APP_HOST: z.string().default("10.0.0.60"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),

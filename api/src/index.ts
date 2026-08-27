@@ -37,7 +37,7 @@ privateApp.register(spotifyAuthModule);
 
 const start = async () => {
   try {
-    await app.listen({ port: env.SERVER_PORT, host: "127.0.0.1" });
+    await app.listen({ port: env.SERVER_PORT, host: env.SERVER_HOST });
     Logger.info(`Server listening on port http://localhost:${env.SERVER_PORT}`);
   } catch (err) {
     Logger.error(err);
