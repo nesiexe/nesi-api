@@ -22,4 +22,12 @@ tasks:
     cmds:
       - npx tsc --noEmit
 
-  
+  api:lint:
+    desc: Lint the API code
+    cmds:
+      - npx run lint
+
+  api:lint:fix:
+    desc: Lint the API code and fix issues
+    cmds:
+      - npx run lint:fix
