@@ -8,7 +8,7 @@ export default async function nowPlayingModule(fastify: FastifyInstance) {
   });
 
   fastify.get("/api/now-playing",
-  async (_req, reply) => {
+  async (_req, _reply) => {
     const data = await fetchCurrentlyPlaying();
     return data ?? { isPlaying: false };
   });

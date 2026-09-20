@@ -10,7 +10,7 @@ export default async function barqUserCountModule(fastify: FastifyInstance) {
   });
 
   fastify.get("/api/barq/user-count",
-  async (_req, reply) => {
+  async (_req, _reply) => {
     const data = await getBarqUserCount();
     return data;
   });

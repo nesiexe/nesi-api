@@ -12,8 +12,8 @@ const nowPlayingCache = createCache<NowPlayingResult | null>(10_000);
 
 async function refreshAccessToken() {
   if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_CLIENT_SECRET || !env.SPOTIFY_REFRESH_TOKEN) {
-    throw new Error("Server Error");
     Logger.warn("Spotify credentials are not set. Please set SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, and SPOTIFY_REFRESH_TOKEN in your environment variables.");
+    throw new Error("Server Error");
   }
 
   const creds = Buffer.from(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`).toString("base64");
