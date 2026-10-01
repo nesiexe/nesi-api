@@ -23,7 +23,8 @@ export function buildSpotifyAuthUrl(): string {
 
 export async function exchangeCodeForRefreshToken(code: string): Promise<string> {
   if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_CLIENT_SECRET) {
-    throw new Error("Spotify credentials are not set");
+    Logger.error("SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET is not set");
+    throw new Error("Internal server error");
   }
 
   const creds = Buffer.from(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`).toString("base64");
@@ -41,15 +42,23 @@ export async function exchangeCodeForRefreshToken(code: string): Promise<string>
     }),
   });
 
-  if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
+  if (!res.ok) {
+    Logger.error(`Token exchange failed: ${res.status} - ${await res.text()}`);
+    throw new Error(`Token exchange failed: ${res.status}`);
+  }
 
   const raw = (await res.json()) as unknown;
   const parsed = SpotifyTokenResponse.safeParse(raw);
-  if (!parsed.success) throw new Error("Invalid token response from Spotify");
+  if (!parsed.success){
+    Logger.error(`Invalid token response from Spotify: ${JSON.stringify(parsed.error)}`);
+    throw new Error("Invalid token response from Spotify");
+  }  
 
   const refreshToken = parsed.data.refresh_token;
-  if (!refreshToken) throw new Error("No refresh token returned from Spotify");
-
+  if (!refreshToken){
+    Logger.error(`No refresh token returned from Spotify: ${JSON.stringify(parsed.data)}`)
+    throw new Error("No refresh token returned from Spotify");
+  }
   await saveRefreshTokenToEnv(refreshToken);
   return refreshToken;
 }

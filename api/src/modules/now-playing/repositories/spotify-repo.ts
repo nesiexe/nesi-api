@@ -30,11 +30,17 @@ async function refreshAccessToken() {
     }),
   });
 
-  if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`);
+  if (!res.ok){
+    Logger.error(`Token refresh failed: ${res.status} - ${await res.text()}`);
+    throw new Error(`Token refresh failed: ${res.status}`);
+  }
   const raw = (await res.json()) as unknown;
   const tokenSchema = z.object({ access_token: z.string(), expires_in: z.union([z.number(), z.string()]).optional() });
   const tokenParsed = tokenSchema.safeParse(raw);
-  if (!tokenParsed.success) throw new Error("Invalid token response from Spotify");
+  if (!tokenParsed.success) {
+    Logger.error(`Invalid token response from Spotify: ${JSON.stringify(tokenParsed.error)}`);
+    throw new Error("Invalid token response from Spotify");
+  }
   const tokenData = tokenParsed.data;
   accessToken = tokenData.access_token;
   tokenExpiresAt = Date.now() + (Number(tokenData.expires_in ?? 3600) - 60) * 1000;
