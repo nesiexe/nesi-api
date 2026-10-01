@@ -34,6 +34,7 @@ export async function buildApp(options: AppOptions = {}) {
   app.register(barqUserCountModule);
   app.register(githubStatsModule);
   await app.ready();
+  app.log.info({ corsEnabled: origins.length > 0, corsOrigins: origins }, "Public API CORS configuration");
   return app;
 }
 
