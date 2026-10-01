@@ -11,14 +11,13 @@ export const BarqProfileSchema = z.object({
 
 export const BarqGraphQLResponse = z.union([
   z.object({
-    profile: BarqProfileSchema.optional(),
+    profile: BarqProfileSchema.nullable(),
   }),
   z.object({
     data: z
       .object({
-        profile: BarqProfileSchema.nullable().optional(),
-      })
-      .optional(),
+        profile: BarqProfileSchema.nullable(),
+      }),
   }),
 ]);
 

@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { ZodError } from "zod";
+import { UpstreamError } from "./upstream";
 
 export class NotFoundError extends Error {
   statusCode = 404;
@@ -19,6 +20,17 @@ export class UnauthorizedError extends Error {
 
 export async function errorsPlugin(fastify: FastifyInstance) {
   fastify.setErrorHandler((err, _req, reply) => {
+    if (err instanceof UpstreamError) {
+      return reply.status(err.statusCode).send({ error: err.message });
+    }
+    if (err && typeof err === "object" && "statusCode" in err && err.statusCode === 429) {
+      return reply.status(429).send({ error: "Too many requests" });
+    }
+
+    if (err && typeof err === "object" && "validation" in err) {
+      return reply.status(400).send({ error: "Validation error" });
+    }
+
     if (err instanceof ZodError) {
       return reply.status(400).send({
         error: "Validation error",

@@ -3,101 +3,36 @@ import { BarqGraphQLResponse, BarqStatusData } from "../dtos/barq-response-dto";
 import { createCache } from "../../../lib/cache";
 import { BadRequestError, NotFoundError } from "../../../lib/errors";
 import { Logger } from "../../../lib/logger";
+import { createUpstreamGuard, requestJson, UpstreamError } from "../../../lib/upstream";
 
-const allowed_uuids = env.BARQ_ALLOWED_UUIDS
-  ? env.BARQ_ALLOWED_UUIDS.split(",").map((s) => s.trim())
-  : [];
+const statusCache = createCache<BarqStatusData>(3_600_000);
+const guard = createUpstreamGuard("barq-status", Logger);
 
-const default_barq_uuid = env.BARQ_DEFAULT_UUID;
-
-const hour = (h: number) => h * 60 * 60 * 1000;
-
-const statusCache = createCache<BarqStatusData | null>(hour(1));
-
-interface FetchResult {
-  ok: true;
-  data: BarqStatusData;
-  expiresAt: Date;
-}
-
-interface FetchError {
-  ok: false;
-  error: string;
-  detail?: string;
-}
-
-async function fetchBarqTempStatusAPI(uuid: string): Promise<FetchResult | FetchError> {
-  if (!env.BARQ_API_KEY) {
-    Logger.warn("Barq API key is not set. Please set BARQ_API_KEY in your environment variables.");
-    return { ok: false, error: "server_error" };
+export async function getBarqStatusForUuid(uuid?: string): Promise<BarqStatusData> {
+  const id = uuid ?? env.BARQ_DEFAULT_UUID;
+  if (!id) throw new BadRequestError("No UUID provided and no default configured");
+  const allowed = env.BARQ_ALLOWED_UUIDS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
+  // The default must be explicitly allowed too. An empty list disables access.
+  if (!allowed.includes(id)) throw new NotFoundError("UUID not allowed");
+  if (!env.BARQ_API_KEY) throw new UpstreamError("http_error", 403);
+  const data = await statusCache.fetch(id, () => guard(async () => {
+    const response = await requestJson(`https://api.barq.app/api/profiles/${id}`, {
+      headers: { Authorization: `Bearer ${env.BARQ_API_KEY}`, "Content-Type": "application/json" },
+    });
+    const parsed = BarqGraphQLResponse.safeParse(response.data);
+    if (!parsed.success) throw new UpstreamError("invalid_response", response.status);
+    const profile = "profile" in parsed.data ? parsed.data.profile
+      : "data" in parsed.data ? parsed.data.data?.profile : null;
+    return {
+      username: profile?.displayName ?? null,
+      pfp: profile?.primaryImage?.url ?? null,
+      status: profile?.temporaryStatus?.status ?? null,
+      expiresAt: profile?.temporaryStatus?.expiredAt ?? null,
+      uuid: id,
+    };
+  }));
+  if (data.expiresAt && new Date(data.expiresAt).getTime() <= Date.now()) {
+    return { ...data, status: null, expiresAt: null };
   }
-
-  Logger.debug(`fetching barq status for ${uuid}`)
-  const res = await fetch(`https://api.barq.app/api/profiles/${uuid}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${env.BARQ_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (res.status === 429) {
-    return { ok: false, error: "rate_limited" };
-  }
-  if (res.status !== 200) {
-    const text = await res.text();
-    return { ok: false, error: "server_error", detail: text };
-  }
-
-  const raw = (await res.json()) as unknown;
-  const parsed = BarqGraphQLResponse.safeParse(raw);
-  if (!parsed.success) {
-    return { ok: false, error: "invalid_response", detail: parsed.error.message };
-  }
-
-  const profile = "profile" in parsed.data
-    ? parsed.data.profile ?? null
-    : "data" in parsed.data
-      ? parsed.data.data?.profile ?? null
-      : null;
-  const pfpImage = profile?.primaryImage?.url ?? null;
-  let username = profile?.displayName ?? null;
-  let status = profile?.temporaryStatus?.status ?? null;
-  let expiresAt = profile?.temporaryStatus?.expiredAt ?? null;
-  const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
-
-  if (expiresAtDate !== null && expiresAtDate.getTime() < Date.now()) {
-    status = null;
-    expiresAt = null;
-  }
-
-  const result: BarqStatusData = {
-    username: username,
-    pfp: pfpImage,
-    status,
-    expiresAt,
-    uuid,
-  };
-
-  return { ok: true, data: result, expiresAt: expiresAtDate ?? new Date(Date.now() + hour(1)) };
-}
-
-export async function getBarqStatusForUuid(uuid?: string): Promise<BarqStatusData | null> {
-  const id = uuid ?? default_barq_uuid;
-  if (!id) {
-    throw new BadRequestError("No UUID provided and no default configured");
-  }
-  if (allowed_uuids.length > 0 && !allowed_uuids.includes(id)) {
-    throw new NotFoundError("UUID not allowed");
-  }
-
-  return statusCache.fetch(id, async () => {
-    const fetched = await fetchBarqTempStatusAPI(id);
-    if (!fetched.ok) {
-      throw new BadRequestError(`Barq API error: ${fetched.error}${fetched.detail ? ` - ${fetched.detail}` : ""}`);
-    }
-
-    Logger.debug("cache expires at " + new Date(Date.now() + hour(1)))
-    return fetched.data;
-  });
+  return data;
 }

@@ -17,17 +17,32 @@ tasks:
     cmds:
       - npm run build
 
-  api:typecheck:
-    desc: Type-check the API
+  api:start:
+    desc: Start the compiled API
     cmds:
-      - npx tsc --noEmit
+      - npm start
+
+  api:typecheck:
+    desc: Type-check the API and tests
+    cmds:
+      - npm run typecheck
+
+  api:test:
+    desc: Run Vitest once
+    cmds:
+      - npm test
+
+  api:test:watch:
+    desc: Run Vitest in watch mode
+    cmds:
+      - npm run test:watch
 
   api:lint:
     desc: Lint the API code
     cmds:
-      - npx run lint
+      - npm run lint
 
   api:lint:fix:
     desc: Lint the API code and fix issues
     cmds:
-      - npx run lint:fix
+      - npm run lint:fix

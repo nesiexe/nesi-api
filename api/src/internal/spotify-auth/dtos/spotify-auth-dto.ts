@@ -1,14 +1,8 @@
 import { z } from "zod";
 
 export const SpotifyAuthCallbackQuery = z.object({
-  code: z.string(),
-});
-
-export const SpotifyTokenResponse = z.object({
-  access_token: z.string(),
-  refresh_token: z.string().optional(),
-  expires_in: z.number(),
+  code: z.string().min(1).max(4096),
+  state: z.string().regex(/^[a-f0-9]{64}$/),
 });
 
 export type SpotifyAuthCallbackQuery = z.infer<typeof SpotifyAuthCallbackQuery>;
-export type SpotifyTokenResponse = z.infer<typeof SpotifyTokenResponse>;
