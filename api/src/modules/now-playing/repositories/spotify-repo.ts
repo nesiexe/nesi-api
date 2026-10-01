@@ -63,12 +63,14 @@ export async function fetchCurrentlyPlaying(): Promise<NowPlayingResult | null> 
     });
 
     if (res.status === 204 || res.status >= 400) {
+      Logger.debug(`spotify api returned ${res.status} - ${await res.text()}`)
       return null;
     }
 
     const rawPlayer = (await res.json()) as unknown;
     const parsed = SpotifyPlayerResponse.safeParse(rawPlayer);
     if (!parsed.success) {
+      Logger.error(`Invalid player response from Spotify: ${JSON.stringify(parsed.error)}`);
       return null;
     }
 
