@@ -28,7 +28,17 @@ export async function buildApp(options: AppOptions = {}) {
   const app = createServer(options);
   await errorsPlugin(app);
   const origins = env.CORS_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
-  app.register(cors, { origin: origins.length ? origins : false });
+  const allowedOrigins = origins.map((origin) => {
+    if (!origin.includes("*")) return origin;
+    // Only a leading subdomain wildcard is supported; scheme and port stay exact.
+    if (!/^https?:\/\/\*\.(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?::[0-9]+)?$/.test(origin)) {
+      throw new Error("CORS wildcard origins must use http(s)://*.domain with an optional port");
+    }
+    const [scheme, domain] = origin.split("*.");
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`^${escape(scheme)}(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+${escape(domain)}$`);
+  });
+  app.register(cors, { origin: allowedOrigins.length ? allowedOrigins : false });
   app.register(nowPlayingModule);
   app.register(barqStatusModule);
   app.register(barqUserCountModule);

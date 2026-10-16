@@ -82,3 +82,51 @@ test("the screenshot's root trailing slash does not prevent Card from matching",
     expect(response.headers["access-control-allow-origin"]).toBe("https://card.nesiexe.xyz");
   } finally { await app.close(); }
 });
+
+
+test.each([
+  ["https://new.nesiexe.xyz", true],
+  ["https://preview.app.nesiexe.xyz", true],
+  ["https://new.peterwoz.pl", true],
+  ["https://preview.app.peterwoz.pl", true],
+  ["https://nesiexe.xyz", false],
+  ["https://peterwoz.pl", false],
+  ["http://new.nesiexe.xyz", false],
+  ["https://new.nesiexe.xyz:444", false],
+  ["https://new.nesiexe.xyz.evil.example", false],
+  ["https://new.peterwoz.pl.evil.example", false],
+  ["https://evilnesiexe.xyz", false],
+  ["https://nesiexe.xyz@evil.example", false],
+  ["https://.nesiexe.xyz", false],
+  ["null", false],
+])("wildcard policy matches %s: %s", async (origin, allowed) => {
+  env.CORS_ORIGINS = "https://*.nesiexe.xyz,https://*.peterwoz.pl";
+  const app = await buildApp({ logger: false });
+  try {
+    for (const method of ["GET", "OPTIONS"] as const) {
+      const response = await app.inject({ method, url: "/api/now-playing/nesi", headers: {
+        origin, ...(method === "OPTIONS" ? { "access-control-request-method": "GET" } : {}),
+      } });
+      expect(response.headers["access-control-allow-origin"]).toBe(allowed ? origin : undefined);
+      expect(response.headers.vary).toContain("Origin");
+    }
+  } finally { await app.close(); }
+});
+
+test.each(["*", "https://*nesiexe.xyz", "https://*.nesiexe.xyz/path", "https://app.*.xyz"])(
+  "rejects unsupported wildcard configuration %s", async (pattern) => {
+    env.CORS_ORIGINS = pattern;
+    await expect(buildApp({ logger: false })).rejects.toThrow("CORS wildcard origins");
+  },
+);
+
+test("combines exact roots and wildcard subdomains with explicit ports", async () => {
+  env.CORS_ORIGINS = "https://nesiexe.xyz,https://*.nesiexe.xyz:444";
+  const app = await buildApp({ logger: false });
+  try {
+    for (const origin of ["https://nesiexe.xyz", "https://new.nesiexe.xyz:444"]) {
+      const response = await app.inject({ url: "/api/now-playing/nesi", headers: { origin } });
+      expect(response.headers["access-control-allow-origin"]).toBe(origin);
+    }
+  } finally { await app.close(); }
+});
