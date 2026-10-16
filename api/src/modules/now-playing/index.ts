@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { SpotifyUsername } from "../../lib/spotify-tokens";
 import { FastifyInstance } from "fastify";
 import { fetchCurrentlyPlaying } from "./repositories/spotify-repo";
 
@@ -7,9 +9,11 @@ export default async function nowPlayingModule(fastify: FastifyInstance) {
     timeWindow: '1 minute'
   });
 
-  fastify.get("/api/now-playing",
-  async (_req, _reply) => {
-    const data = await fetchCurrentlyPlaying();
+  fastify.get<{ Params: { username: z.infer<typeof SpotifyUsername> } }>("/api/now-playing/:username", {
+    schema: { params: z.object({ username: SpotifyUsername }) },
+  },
+  async (req, _reply) => {
+    const data = await fetchCurrentlyPlaying(req.params.username);
     return data ?? { isPlaying: false };
   });
 }

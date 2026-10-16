@@ -6,6 +6,8 @@ import { env } from "../../lib/env";
 import { buildSpotifyAuthUrl, exchangeCodeForRefreshToken } from "./repositories/spotify-auth-repo";
 import { SpotifyAuthCallbackQuery } from "./dtos/spotify-auth-dto";
 
+import { SpotifyUsername } from "../../lib/spotify-tokens";
+
 const digest = (value: string) => createHash("sha256").update(value).digest();
 const cookieName = "spotify_oauth_state";
 const stateTtl = 10 * 60 * 1000;
@@ -17,7 +19,7 @@ export default async function spotifyAuthModule(fastify: FastifyInstance) {
       redirect.username || redirect.password || redirect.search || redirect.hash || redirect.pathname !== "/api/callback") {
     throw new Error("Spotify redirect must use HTTPS or loopback HTTP and the /api/callback path");
   }
-  const pending = new Map<string, { expires: number; verifier: string }>();
+  const pending = new Map<string, { expires: number; verifier: string; username: SpotifyUsername }>();
   const trusts = createProxyTrust(env.TRUSTED_PROXIES, env.NODE_ENV === "production");
   await fastify.register(import("@fastify/rate-limit"), { max: 30, timeWindow: "1 minute" });
   fastify.addHook("onClose", async () => { pending.clear(); });
@@ -47,13 +49,16 @@ export default async function spotifyAuthModule(fastify: FastifyInstance) {
     `${cookieName}=${value}; HttpOnly; SameSite=Lax; Path=/api/callback; Max-Age=${maxAge}` +
     (redirect.protocol === "https:" ? "; Secure" : "");
 
-  fastify.get("/login", async (_req, reply) => {
+  fastify.get<{ Querystring: { username: SpotifyUsername } }>("/login", {
+    schema: { querystring: z.object({ username: SpotifyUsername.default("nesi") }) },
+  }, async (req, reply) => {
+    const { username } = req.query;
     for (const [state, flow] of pending) if (flow.expires <= Date.now()) pending.delete(state);
     if (pending.size >= 100) return reply.code(429).send({ error: "Too many authorization attempts" });
     const state = randomBytes(32).toString("hex");
     const verifier = randomBytes(32).toString("base64url");
-    const url = buildSpotifyAuthUrl(state, digest(verifier).toString("base64url"));
-    pending.set(state, { expires: Date.now() + stateTtl, verifier });
+    const url = buildSpotifyAuthUrl(state, digest(verifier).toString("base64url"), username);
+    pending.set(state, { expires: Date.now() + stateTtl, verifier, username });
     reply.header("Set-Cookie", cookie(state, stateTtl / 1000));
     return reply.redirect(url);
   });
@@ -72,7 +77,7 @@ export default async function spotifyAuthModule(fastify: FastifyInstance) {
     // Consume before exchanging the code, including when Spotify fails.
     pending.delete(state);
     reply.header("Set-Cookie", cookie("", 0));
-    await exchangeCodeForRefreshToken(code, flow.verifier);
+    await exchangeCodeForRefreshToken(code, flow.verifier, flow.username);
     return { success: true, message: "Refresh token updated. You can close this tab." };
   });
 }

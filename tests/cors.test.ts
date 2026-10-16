@@ -21,11 +21,11 @@ test.each(["https://nesiexe.xyz", "https://card.nesiexe.xyz", "https://peterwoz.
   "allows GET and preflight for configured origin %s", async (origin) => {
     const app = await buildApp({ logger: false });
     try {
-      const response = await app.inject({ url: "/api/now-playing", headers: { origin } });
+      const response = await app.inject({ url: "/api/now-playing/nesi", headers: { origin } });
       expect(response.statusCode).toBe(200);
       expect(response.headers["access-control-allow-origin"]).toBe(origin);
       expect(response.headers.vary).toContain("Origin");
-      const preflight = await app.inject({ method: "OPTIONS", url: "/api/now-playing", headers: {
+      const preflight = await app.inject({ method: "OPTIONS", url: "/api/now-playing/nesi", headers: {
         origin, "access-control-request-method": "GET", "access-control-request-headers": "content-type",
       } });
       expect(preflight.statusCode).toBe(204);
@@ -42,7 +42,7 @@ test.each(["https://unknown.example", "https://card.nesiexe.xyz.evil.example", "
     const app = await buildApp({ logger: false });
     try {
       for (const method of ["GET", "OPTIONS"] as const) {
-        const response = await app.inject({ method, url: "/api/now-playing", headers: {
+        const response = await app.inject({ method, url: "/api/now-playing/nesi", headers: {
           origin, ...(method === "OPTIONS" ? { "access-control-request-method": "GET" } : {}),
         } });
         expect(response.headers["access-control-allow-origin"]).toBeUndefined();
@@ -66,9 +66,9 @@ test("an empty allowlist disables CORS including preflight", async () => {
   const app = await buildApp({ logger: false });
   try {
     const headers = { origin: "https://card.nesiexe.xyz", "access-control-request-method": "GET" };
-    const response = await app.inject({ url: "/api/now-playing", headers });
+    const response = await app.inject({ url: "/api/now-playing/nesi", headers });
     expect(response.headers["access-control-allow-origin"]).toBeUndefined();
-    const preflight = await app.inject({ method: "OPTIONS", url: "/api/now-playing", headers });
+    const preflight = await app.inject({ method: "OPTIONS", url: "/api/now-playing/nesi", headers });
     expect(preflight.statusCode).toBe(404);
     expect(preflight.headers["access-control-allow-origin"]).toBeUndefined();
   } finally { await app.close(); }
@@ -78,7 +78,7 @@ test("the screenshot's root trailing slash does not prevent Card from matching",
   env.CORS_ORIGINS = "https://nesiexe.xyz/, https://card.nesiexe.xyz";
   const app = await buildApp({ logger: false });
   try {
-    const response = await app.inject({ url: "/api/now-playing", headers: { origin: "https://card.nesiexe.xyz" } });
+    const response = await app.inject({ url: "/api/now-playing/nesi", headers: { origin: "https://card.nesiexe.xyz" } });
     expect(response.headers["access-control-allow-origin"]).toBe("https://card.nesiexe.xyz");
   } finally { await app.close(); }
 });

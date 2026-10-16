@@ -6,7 +6,7 @@ import { exchangeCodeForRefreshToken } from "../api/src/internal/spotify-auth/re
 
 vi.mock("../api/src/lib/env", () => ({ env: {
   NODE_ENV: "test", TRUSTED_PROXIES: "", SPOTIFY_AUTH_PASSWORD: "p".repeat(32),
-  SPOTIFY_REDIRECT_URI: "https://auth.example.test/api/callback", SPOTIFY_CLIENT_ID: "test-id",
+  SPOTIFY_REDIRECT_URI: "https://auth.example.test/api/callback", NESI_SPOTIFY_CLIENT_ID: "test-id",
 } }));
 vi.mock("../api/src/internal/spotify-auth/repositories/spotify-auth-repo", async (importOriginal) => ({
   ...await importOriginal<typeof import("../api/src/internal/spotify-auth/repositories/spotify-auth-repo")>(),

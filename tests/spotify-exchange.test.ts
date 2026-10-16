@@ -7,8 +7,8 @@ import { env } from "../api/src/lib/env";
 import { Logger } from "../api/src/lib/logger";
 
 vi.mock("../api/src/lib/env", () => ({ env: {
-  NODE_ENV: "test", TRUSTED_PROXIES: "", SPOTIFY_CLIENT_ID: "test-id", SPOTIFY_AUTH_PASSWORD: "p".repeat(32),
-  SPOTIFY_REDIRECT_URI: "http://127.0.0.1:3003/api/callback", SPOTIFY_TOKEN_FILE: "", SPOTIFY_REFRESH_TOKEN: "old-token",
+  NODE_ENV: "test", TRUSTED_PROXIES: "", NESI_SPOTIFY_CLIENT_ID: "test-id", SPOTIFY_AUTH_PASSWORD: "p".repeat(32),
+  SPOTIFY_REDIRECT_URI: "http://127.0.0.1:3003/api/callback", SPOTIFY_TOKEN_FILE: "", NESI_SPOTIFY_REFRESH_TOKEN: "old-token",
 } }));
 vi.mock("../api/src/lib/logger", () => ({ Logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 let directory: string;
@@ -19,7 +19,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   directory = await mkdtemp(path.join(tmpdir(), "nesi-exchange-test-"));
   env.SPOTIFY_TOKEN_FILE = path.join(directory, "token");
-  env.SPOTIFY_REFRESH_TOKEN = "old-token";
+  env.NESI_SPOTIFY_REFRESH_TOKEN = "old-token";
   vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("Unexpected network call")));
   tokens = await import("../api/src/lib/spotify-tokens.js");
   repository = await import("../api/src/internal/spotify-auth/repositories/spotify-auth-repo.js");
@@ -52,12 +52,12 @@ test("real callback exchanges the matching PKCE verifier and persists only the t
     expect(body.get("code")).toBe("test-code");
     expect(createHash("sha256").update(body.get("code_verifier")!).digest("base64url"))
       .toBe(parameters.get("code_challenge"));
-    expect(await readFile(env.SPOTIFY_TOKEN_FILE, "utf8")).toBe(payload.refresh_token);
-    expect(env.SPOTIFY_REFRESH_TOKEN).toBe(payload.refresh_token);
-    env.SPOTIFY_REFRESH_TOKEN = "stale";
+    expect(await readFile(`${env.SPOTIFY_TOKEN_FILE}.nesi`, "utf8")).toBe(payload.refresh_token);
+    expect(env.NESI_SPOTIFY_REFRESH_TOKEN).toBe(payload.refresh_token);
+    env.NESI_SPOTIFY_REFRESH_TOKEN = "stale";
     await tokens.initializeSpotifyToken();
-    expect(env.SPOTIFY_REFRESH_TOKEN).toBe(payload.refresh_token);
-    expect(await readdir(directory)).toEqual(["token"]);
+    expect(env.NESI_SPOTIFY_REFRESH_TOKEN).toBe(payload.refresh_token);
+    expect(await readdir(directory)).toEqual(["token.nesi"]);
     expect(callback.body).not.toContain(payload.refresh_token);
   } finally { await app.close(); }
 });
@@ -72,14 +72,42 @@ test.each(["http", "json", "missing", "oversize", "timeout"])("real exchange saf
   });
   await expect(repository.exchangeCodeForRefreshToken("code", "v".repeat(43)))
     .rejects.toThrow("Upstream service unavailable");
-  expect(env.SPOTIFY_REFRESH_TOKEN).toBe("old-token");
+  expect(env.NESI_SPOTIFY_REFRESH_TOKEN).toBe("old-token");
   expect(await readdir(directory)).toEqual([]);
   expect(JSON.stringify(vi.mocked(Logger.warn).mock.calls)).not.toContain("PRIVATE_SENTINEL");
 });
 
 test("late refresh responses cannot replace a newly authorized account", async () => {
-  await tokens.saveSpotifyRefreshToken("new-account");
-  await expect(tokens.saveSpotifyRefreshToken("old-account-rotated", "old-token")).rejects.toThrow("authorization changed");
-  expect(await readFile(env.SPOTIFY_TOKEN_FILE, "utf8")).toBe("new-account");
-  expect(env.SPOTIFY_REFRESH_TOKEN).toBe("new-account");
+  await tokens.saveSpotifyRefreshToken("nesi", "new-account");
+  await expect(tokens.saveSpotifyRefreshToken("nesi", "old-account-rotated", "old-token")).rejects.toThrow("authorization changed");
+  expect(await readFile(`${env.SPOTIFY_TOKEN_FILE}.nesi`, "utf8")).toBe("new-account");
+  expect(env.NESI_SPOTIFY_REFRESH_TOKEN).toBe("new-account");
+});
+
+
+test("frog OAuth persists and reloads its own token without replacing nesi", async () => {
+  env.FROG_SPOTIFY_CLIENT_ID = "frog-client";
+  env.FROG_SPOTIFY_REFRESH_TOKEN = "frog-old";
+  vi.mocked(fetch).mockResolvedValue(Response.json(payload));
+  const { buildPrivateApp } = await import("../api/src/app.js");
+  const app = await buildPrivateApp({ logger: false });
+  const authorization = `Basic ${Buffer.from(`admin:${"p".repeat(32)}`).toString("base64")}`;
+  try {
+    const login = await app.inject({ url: "/login?username=frog", headers: { authorization } });
+    const parameters = new URL(login.headers.location!).searchParams;
+    expect(parameters.get("client_id")).toBe("frog-client");
+    const callback = await app.inject({
+      url: `/api/callback?code=test-code&state=${parameters.get("state")}`,
+      headers: { authorization, cookie: String(login.headers["set-cookie"]).split(";")[0] },
+    });
+    expect(callback.statusCode).toBe(200);
+    expect((vi.mocked(fetch).mock.calls[0][1]!.body as URLSearchParams).get("client_id")).toBe("frog-client");
+    expect(await readFile(`${env.SPOTIFY_TOKEN_FILE}.frog`, "utf8")).toBe(payload.refresh_token);
+    await tokens.saveSpotifyRefreshToken("nesi", "nesi-rotated", "old-token");
+    env.NESI_SPOTIFY_REFRESH_TOKEN = "stale";
+    env.FROG_SPOTIFY_REFRESH_TOKEN = "stale";
+    await tokens.initializeSpotifyToken();
+    expect(env.NESI_SPOTIFY_REFRESH_TOKEN).toBe("nesi-rotated");
+    expect(env.FROG_SPOTIFY_REFRESH_TOKEN).toBe(payload.refresh_token);
+  } finally { await app.close(); }
 });
